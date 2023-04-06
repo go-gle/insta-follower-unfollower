@@ -1,8 +1,8 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.remote.webelement import WebElement
 from time import sleep
-from constants import *
+from constants import LONG_SLEEP, SHORT_SLEEP, WINDOW_SIZE, RND_STR
 from random import random
 
 
@@ -40,47 +40,51 @@ class FollowerChecker:
         pass_input.click()
         pass_input.clear()
         pass_input.send_keys(self.password)
-
-        login_button = [i for i in self.driver.find_elements(by=By.TAG_NAME, value='button') if 'Log' in i.text][0]
+        login_button = [i for i in self.driver.find_elements(by=By.TAG_NAME, value='button')
+                        if 'Log' in i.text or 'Войти' in i.text][0]
         login_button.submit()
 
         self._random_sleep(LONG_SLEEP, 1.5 * LONG_SLEEP)
-        save_button = [i for i in self.driver.find_elements(by=By.TAG_NAME, value='button') if 'Save' in i.text][0]
+        save_button = [i for i in self.driver.find_elements(by=By.TAG_NAME, value='button')
+                       if 'Save' in i.text or 'Сохранить' in i.text][0]
         save_button.click()
         self._random_sleep(LONG_SLEEP, 1.5 * LONG_SLEEP)
 
-    def _get_list(self: 'FollowerChecker',
-                  followers_box_path: str,
-                  followers_path: str,
-                  ) -> list:
-        followers_box = self.driver.find_element(By.XPATH, followers_box_path)
-        i = 0
-        while True:
-            self._random_sleep(SHORT_SLEEP, 1.5 * SHORT_SLEEP)
-            try:
-                i += USERS_PER_SCREEN
-                t = self.driver.find_element(By.XPATH, followers_path + f'[{i}]')
-                self.driver.execute_script("arguments[0].scrollIntoView();", t)
-            except NoSuchElementException:
-                break
-        user_list = [i.get_attribute('href')
-                     for i in followers_box.find_elements(By.TAG_NAME, 'a')
-                     if i.text != '']
-        self._random_sleep(LONG_SLEEP, 1.5 * LONG_SLEEP)
-        return user_list
+    def _scroll_users(self: 'FollowerChecker', users_container: WebElement) -> None:
+        t = None
+        t1 = users_container.find_elements(By.XPATH, './div/div/div/*')[-1]
+        while t1 != t:
+            t = t1
+            self.driver.execute_script("arguments[0].scrollIntoView();", t1)
+            self._random_sleep(LONG_SLEEP, 1.5 * LONG_SLEEP)
+            t1 = users_container.find_elements(By.XPATH, './div/div/div/*')[-1]
 
     def get_followers(self: 'FollowerChecker') -> list:
         self.driver.get(f'http://instagram.com/{self.login}/followers')
-        self._random_sleep(LONG_SLEEP, 1.5 * LONG_SLEEP)
-        followers = self._get_list(FOLLOWERS_BOX_XPATH, FOLLOWERS_XPATH)
-        print(f'Total # unfollowing is {len(followers)}')
+        followers = self.get_users(following_flag=False)
+        print(f'Total # followers is {len(followers)}')
         return followers
+
+    def get_users(self: 'FollowerChecker', following_flag: bool) -> list:
+        self._random_sleep(LONG_SLEEP, 1.5 * LONG_SLEEP)
+        if following_flag:
+            divs = [i for i in self.driver.find_elements(By.TAG_NAME, 'div')
+                    if i.text == 'Following' or i.text == 'Ваши подписки']
+        else:
+            divs = [i for i in self.driver.find_elements(By.TAG_NAME, 'div')
+                    if i.text == 'Followers' or i.text == 'Подписчики']
+        users_header = divs[0]
+        user_box = users_header.find_element(By.XPATH, '../../../../*')
+        self._scroll_users(user_box)
+        users = [i.get_attribute('href')
+                 for i in user_box.find_elements(By.TAG_NAME, 'a')
+                 if i.text != '']
+        return users
 
     def get_following(self: 'FollowerChecker') -> list:
         self.driver.get(f'http://instagram.com/{self.login}/following')
-        self._random_sleep(LONG_SLEEP, 1.5 * LONG_SLEEP)
-        following = self._get_list(FOLLOWING_BOX_XPATH, FOLLOWING_XPATH)
-        print(f'Total # following  is {len(following)}')
+        following = self.get_users(following_flag=True)
+        print(f'Total # following is {len(following)}')
         return following
 
     def get_followers_unfollowers(self: 'FollowerChecker') -> list:
